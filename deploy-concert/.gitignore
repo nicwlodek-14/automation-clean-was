@@ -1,0 +1,5 @@
+geckodriver.log
+create_api_token.log
+screenshot*
+.vscode
+.ansible

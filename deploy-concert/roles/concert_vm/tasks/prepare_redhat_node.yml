@@ -1,0 +1,18 @@
+- name: Disable SELinux in /etc/selinux/config
+  ansible.posix.selinux:
+    state: disabled
+    policy: targeted
+
+# Required on the target VM by the kubernetes.core.k8s/k8s_info modules used in install.yml,
+# since those modules run on this host (not localhost) via the local kubeconfig.
+- name: Ensure python3-pip is installed
+  ansible.builtin.dnf:
+    name: python3-pip
+    state: present
+
+- name: Ensure the Python kubernetes library is installed
+  ansible.builtin.pip:
+    name: kubernetes
+    state: present
+    executable: pip3
+

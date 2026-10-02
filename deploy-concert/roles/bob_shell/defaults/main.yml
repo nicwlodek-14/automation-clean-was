@@ -1,0 +1,13 @@
+---
+# Bob Shell is installed via the official install script from bob.ibm.com.
+# It is installed system-wide under /usr/local (default for the install script).
+
+bob_shell_install_script_url: "https://bob.ibm.com/download/bobshell.sh"
+
+# Directory where the BOBSHELL_API_KEY environment variable will be persisted
+# so that all login shells on the host have access to it.
+bob_shell_profile_dir: "/etc/profile.d"
+
+# Optional: set a working directory that Bob Shell will trust by default.
+# If left empty, no trusted-folder entry is written.
+bob_shell_trusted_workspace: ""

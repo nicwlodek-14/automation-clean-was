@@ -1,0 +1,199 @@
+
+- name: Run installation
+  become: true
+  block:
+    - ansible.builtin.debug:
+        msg: "Installing Concert now..."
+
+    - name: Create the installation directory
+      ansible.builtin.file:
+        path: "{{ concert_install_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download Concert
+      ansible.builtin.get_url:
+        url: "{{ concert_download_url }}"
+        dest: "{{ tmp_files_dir }}/ibm-concert.tar.gz"
+        mode: "0644"       
+
+    - name: Unarchive the Concert tarball
+      ansible.builtin.unarchive:
+        src: "{{ tmp_files_dir }}/ibm-concert.tar.gz"
+        dest: "{{ concert_install_dir }}"
+        remote_src: true
+        creates: "{{ concert_install_dir }}/ibm-concert/etc/params.ini"
+
+    - name: Copy sample workflow params
+      ansible.builtin.copy:
+        src: "{{ concert_install_dir }}/ibm-concert/etc/sample-params/concert-dataapps-workflows-vm-quickstart-params.ini"
+        dest: "{{ concert_install_dir }}/ibm-concert/etc/params.ini"
+        remote_src: true
+        force: true
+    
+    # The quickstart template by defaul already sets INSTALL_DATAAPPS and INSTALL_WORKFLOWS to true
+    # if above template is changed, then this need to be validated again
+    - name: Update parameters in params.ini
+      ansible.builtin.lineinfile:
+        path: "{{ concert_install_dir }}/ibm-concert/etc/params.ini"
+        regexp: '^{{ item.key }}\s*='
+        line: "{{ item.key }}={{ item.value }}"
+        backup: false
+      loop:
+        - { key: "REG_USER", value: "{{ concert_registry_user }}" }
+        - { key: "WORKFLOWS_INSTANCE_ADDRESS", value: '{{ hostvars[inventory_hostname]["host_fqdn"] }}' }
+
+        - { key: "INSTALL_SECURECODER", value: "{{ install_securecoder | lower }}" }
+        - { key: "ENABLE_BUDDY", value: "{{ install_buddy | lower }}" }
+        - { key: "FILE_STORAGE_CLASS_CONCERT", value: "{{ file_storage_class_concert }}" }              
+
+        - { key: "ENABLE_AI", value: "{{ enable_watsonx | lower }}" }
+        - { key: "LLM_PROVIDER", value: "{{ llm_provider }}" }        
+        - { key: "WATSONX_API_PROJECT_ID", value: "{{ watsonx_api_project_id }}" }
+        - { key: "WATSONX_API_URL", value: "{{ watsonx_api_url }}" }   
+        - { key: "CONCERT_NAMESPACE", value: "{{ concert_namespace }}" }
+
+
+    # The Concert manage-prereqs-vm script hardcodes /usr/local/bin/kubectl in its health check.
+    # k3s installs to /usr/local/bin/k3s — there is no /usr/local/bin/kubectl on a fresh VM.
+    # We install a small wrapper script at that path that delegates to k3s kubectl.
+    # The wrapper is safe to create before k3s is installed because the Concert setup script
+    # installs k3s itself before running the health check.
+    - name: Create /usr/local/bin/kubectl wrapper for Concert health check
+      ansible.builtin.copy:
+        dest: /usr/local/bin/kubectl
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          exec /usr/local/bin/k3s kubectl "$@"
+
+    # Note: There are some workarounds in this task to get ansible to play nicely with the Concert installation.
+    # 1. Need to use shell with 'bash -l' so there is a login shell and the users environment is setup correctly
+    #    and the users setup scripts are run.
+    # 2. The Concert setup script's internal k3s health check calls /usr/local/bin/kubectl. We export
+    #    KUBECONFIG inline so it is available from the very first line of the script.
+    # 3. We retry up to 3 times with a 30s pause to handle any remaining k3s startup race on fresh VMs.
+    - name: Install Concert
+      # no_log: true
+      environment:
+        WATSONX_API_KEY: "{{ watsonx_api_key }}"
+        REG_PASS: "{{ concert_registry_password }}"
+        # Ansible's environment doesn't include /usr/local/bin where kubectl lives; add it manually.
+        PATH: "/usr/local/bin:{{ ansible_facts['env']['PATH'] | default('/usr/bin:/bin') }}"
+      ansible.builtin.shell:
+        cmd: "bash -l -c 'export KUBECONFIG={{ local_k3s_kubeconfig_file_path }}; {{ concert_install_dir }}/ibm-concert/bin/setup --license_acceptance=y --username={{ concert_default_username }} --password={{ concert_default_password }}'"
+      register: concert_install_result
+      until: concert_install_result.rc == 0
+      retries: 3
+      delay: 30
+
+    - name: Update configmap app-cfg-cm to allow insecure connection from Instana and restart roja-ingestion
+      block:
+        - name: Patch app-cfg-cm to allow insecure connection
+          kubernetes.core.k8s:
+            kubeconfig: "{{ local_k3s_kubeconfig_file_path }}"
+            state: present
+            kind: ConfigMap
+            api_version: v1
+            name: app-cfg-cm
+            namespace: "{{ concert_namespace }}"
+            merge_type: merge
+            definition:
+              data:
+                ROJA_ALLOW_INSECURE_CONN: "true"
+          register: cm_patch
+
+        - name: Restart roja-ingestion deployment
+          when: cm_patch.changed
+          kubernetes.core.k8s:
+            kubeconfig: "{{ local_k3s_kubeconfig_file_path }}"
+            state: patched
+            kind: Deployment
+            api_version: apps/v1
+            name: roja-ingestion
+            namespace: "{{ concert_namespace }}"
+            definition:
+              spec:
+                template:
+                  metadata:
+                    annotations:
+                      kubectl.kubernetes.io/restartedAt: "{{ ansible_facts['date_time']['iso8601'] }}"
+
+    # v300 When enable_watsonx is true, create secret and restart ibm-roja-py-utils to pick the change
+    - name: Configure watsonx integration for Concert Protect Core
+      when: enable_watsonx
+      block:
+        - name: Patch app-cfg-secret with watsonx values
+          kubernetes.core.k8s:
+            kubeconfig: "{{ local_k3s_kubeconfig_file_path }}"
+            state: present
+            kind: Secret
+            api_version: v1
+            name: app-cfg-secret
+            namespace: "{{ concert_namespace }}"
+            merge_type: merge
+            definition:
+              data:
+                WATSONX_API_KEY: "{{ watsonx_api_key | b64encode }}"
+                WATSONX_API_PROJECT_ID: "{{ watsonx_api_project_id | b64encode }}"
+                WATSONX_API_URL: "{{ watsonx_api_url | b64encode }}"
+          register: watsonx_secret_patch
+
+        - name: Restart roja-py-utils deployment
+          when: watsonx_secret_patch.changed
+          kubernetes.core.k8s:
+            kubeconfig: "{{ local_k3s_kubeconfig_file_path }}"
+            state: patched
+            kind: Deployment
+            api_version: apps/v1
+            name: roja-py-utils
+            namespace: "{{ concert_namespace }}"
+            definition:
+              spec:
+                template:
+                  metadata:
+                    annotations:
+                      kubectl.kubernetes.io/restartedAt: "{{ ansible_facts['date_time']['iso8601'] }}"
+
+    # v300 Simple check to make sure all deployments are Available
+    - name: Get all Concert deployments in the namespace
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ local_k3s_kubeconfig_file_path }}"
+        kind: Deployment
+        namespace: "{{ concert_namespace }}"
+      register: concert_deployments
+
+    - name: Wait for all Concert deployments to become Available
+      kubernetes.core.k8s:
+        kubeconfig: "{{ local_k3s_kubeconfig_file_path }}"
+        state: present
+        kind: Deployment
+        api_version: apps/v1
+        name: "{{ item.metadata.name }}"
+        namespace: "{{ concert_namespace }}"
+        wait: true
+        wait_timeout: 300
+        wait_condition:
+          type: Available
+          status: "True"
+      loop: "{{ concert_deployments.resources }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+
+    - name: Wait for roja-minio statefulset rollout to complete
+      kubernetes.core.k8s:
+        kubeconfig: "{{ local_k3s_kubeconfig_file_path }}"
+        state: present
+        kind: StatefulSet
+        api_version: apps/v1
+        name: roja-minio
+        namespace: "{{ concert_namespace }}"
+        wait: true
+        wait_timeout: 300
+
+    # TODO: Do a similar check on workflows, dataapps, secure coder pods
+
+    - name: Remove temp files from tmp dir
+      ansible.builtin.file:
+        path: "{{ tmp_files_dir }}"
+        state: absent

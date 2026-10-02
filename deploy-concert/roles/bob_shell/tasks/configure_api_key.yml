@@ -1,0 +1,23 @@
+---
+- name: Validate bob_shell_api_key is set for configuration
+  ansible.builtin.assert:
+    that:
+      - bob_shell_api_key is defined
+      - bob_shell_api_key is string
+      - bob_shell_api_key | length > 0
+    fail_msg: "'bob_shell_api_key' must be a non-empty string. Generate one at https://bob.ibm.com with Scope set to Inference."
+
+- name: Write BOBSHELL_API_KEY to profile
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ bob_shell_profile_dir }}/bobshell.sh"
+    content: |
+      # Managed by Ansible — IBM Bob Shell API key
+      export BOBSHELL_API_KEY="{{ bob_shell_api_key }}"
+    mode: "0600"
+    owner: root
+    group: root
+
+- name: API key configured
+  ansible.builtin.debug:
+    msg: "BOBSHELL_API_KEY written to {{ bob_shell_profile_dir }}/bobshell.sh. Source it with: source {{ bob_shell_profile_dir }}/bobshell.sh"

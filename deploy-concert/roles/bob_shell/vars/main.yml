@@ -1,0 +1,5 @@
+---
+# These vars are not expected to be overridden by the user.
+
+# The install script drops the `bob` binary here.
+bob_shell_bin_path: "/usr/local/bin/bob"

@@ -1,0 +1,47 @@
+- name: Install Bob Shell
+  become: true
+  block:
+    - ansible.builtin.debug:
+        msg: "Installing Bob Shell now..."
+
+    - name: Download Bob Shell install script
+      ansible.builtin.get_url:
+        url: "{{ bob_shell_install_script_url }}"
+        dest: /tmp/bobshell-install.sh
+        mode: "0755"
+
+    # The install script installs the `bob` npm package globally.
+    # Running under bash -l ensures the login shell environment (PATH, etc.) is available.
+    - name: Run Bob Shell install script
+      ansible.builtin.shell:
+        cmd: "bash -l /tmp/bobshell-install.sh"
+        creates: "{{ bob_shell_bin_path }}"
+
+    - name: Remove Bob Shell install script
+      ansible.builtin.file:
+        path: /tmp/bobshell-install.sh
+        state: absent
+
+    - name: Write trusted workspace entry
+      when: bob_shell_trusted_workspace | length > 0
+      ansible.builtin.copy:
+        dest: "/root/.bob/trustedFolders.json"
+        content: |
+          {
+            "trustedFolders": [
+              "{{ bob_shell_trusted_workspace }}"
+            ]
+          }
+        mode: "0600"
+        owner: root
+        group: root
+
+    - name: Verify Bob Shell binary is present
+      ansible.builtin.stat:
+        path: "{{ bob_shell_bin_path }}"
+      register: bob_bin_stat
+      failed_when: not bob_bin_stat.stat.exists
+
+    - name: Bob Shell install complete
+      ansible.builtin.debug:
+        msg: "Bob Shell installed at {{ bob_shell_bin_path }}. Authenticate with: bob --auth-method api-key"

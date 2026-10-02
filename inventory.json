@@ -1,0 +1,12 @@
+{
+  "concert-v300": {
+    "hosts": {
+      "concert": {
+        "ansible_host": "127.0.0.1",
+        "ansible_connection": "local",
+        "ansible_user": "root",
+        "host_fqdn": "HOST DOMAIN HERE OR IP"
+      }
+    }
+  }
+}

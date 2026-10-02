@@ -1,0 +1,40 @@
+---
+# It is recommended to use a root user for the Concert installation
+# additinal automation was added to verify user is root
+# non-root user requires additional steps and still needs to sudo as root 
+
+
+concert_install_dir: "/opt/ibm/concert"
+tmp_files_dir: /tmp/concert
+
+# Default to IBM registry, user can use their own details if privately hosting
+concert_registry: "cp.icr.io/cp"
+concert_registry_user: "cp"
+concert_registry_password: "{{ ibm_entitlement_key }}"
+
+concert_https_port: 12443
+
+concert_default_username: "ibmconcert"
+concert_default_password: "Passw0rd"
+
+install_workflows: true
+install_dataapps: true
+install_securecoder: true
+install_buddy: true
+
+file_storage_class_concert: "local-path"
+concert_namespace: "concert"
+
+# watsonx.ai integration — 
+# when true, the watsonx_api_* vars must be provided (api_key, api_project and api_url are required) 
+llm_provider: "watsonx"
+enable_watsonx: false
+watsonx_api_model_id: ""
+watsonx_api_key: ""
+watsonx_api_project_id: ""
+watsonx_api_url: ""
+
+# this is still required for post Concert install updates
+local_k3s_kubeconfig_file_path: "/etc/rancher/k3s/k3s.yaml"
+registries_file_path: "/etc/rancher/k3s/registries.yaml"
+

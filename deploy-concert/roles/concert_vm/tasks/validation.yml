@@ -1,0 +1,86 @@
+---
+# - name: Validate that we are operating as root
+#   ansible.builtin.assert:
+#     that:
+#       - "ansible_facts['effective_user_id'] == 0"
+#     fail_msg: >-
+#       This playbook must operate as root (uid 0), but the effective uid is
+#       {{ ansible_facts['effective_user_id'] | default('unknown') }}. Connect as root.
+#     success_msg: "Operating as root (uid 0)."
+
+- name: Validate IBM Entitlement Key
+  ansible.builtin.assert:
+    that:
+      - ibm_entitlement_key is string
+      - ibm_entitlement_key | length > 0
+    fail_msg: "The 'ibm_entitlement_key' must be defined as a non-empty string."
+  when: ibm_entitlement_key is defined
+
+- name: Validate install_workflows
+  ansible.builtin.assert:
+    that:
+      - install_workflows is defined
+      - (install_workflows is boolean) or (install_workflows is string)
+    fail_msg: "'install_workflows' must be defined as a boolean or a string (e.g. true, false, 'true', 'false'). Only 'true'/true coerces to true; any other value is treated as false."
+
+- name: Normalise install_workflows to a boolean
+  ansible.builtin.set_fact:
+    install_workflows: "{{ install_workflows | bool }}"
+
+- name: Validate install_dataapps
+  ansible.builtin.assert:
+    that:
+      - install_dataapps is defined
+      - (install_dataapps is boolean) or (install_dataapps is string)
+    fail_msg: "'install_dataapps' must be defined as a boolean or a string (e.g. true, false, 'true', 'false'). Only 'true'/true coerces to true; any other value is treated as false."
+
+- name: Normalise install_dataapps to a boolean
+  ansible.builtin.set_fact:
+    install_dataapps: "{{ install_dataapps | bool }}"
+
+- name: Validate install_securecoder
+  ansible.builtin.assert:
+    that:
+      - install_securecoder is defined
+      - (install_securecoder is boolean) or (install_securecoder is string)
+    fail_msg: "'install_securecoder' must be defined as a boolean or a string (e.g. true, false, 'true', 'false'). Only 'true'/true coerces to true; any other value is treated as false."
+
+- name: Normalise install_securecoder to a boolean
+  ansible.builtin.set_fact:
+    install_securecoder: "{{ install_securecoder | bool }}"
+
+- name: Validate install_buddy
+  ansible.builtin.assert:
+    that:
+      - install_buddy is defined
+      - (install_buddy is boolean) or (install_buddy is string)
+    fail_msg: "'install_buddy' must be defined as a boolean or a string (e.g. true, false, 'true', 'false'). Only 'true'/true coerces to true; any other value is treated as false."
+
+- name: Normalise install_buddy to a boolean
+  ansible.builtin.set_fact:
+    install_buddy: "{{ install_buddy | bool }}"        
+
+- name: Validate enable_watsonx
+  ansible.builtin.assert:
+    that:
+      - enable_watsonx is defined
+      - (enable_watsonx is boolean) or (enable_watsonx is string)
+    fail_msg: "'enable_watsonx' must be defined as a boolean or a string (e.g. true, false, 'true', 'false'). Only 'true'/true coerces to true; any other value is treated as false."
+
+- name: Normalise enable_watsonx to a boolean
+  ansible.builtin.set_fact:
+    enable_watsonx: "{{ enable_watsonx | bool }}"
+
+- name: Validate watsonx.ai credentials when enable_watsonx is true
+  when: enable_watsonx
+  ansible.builtin.assert:
+    that:
+      - watsonx_api_key is string
+      - watsonx_api_key | length > 0
+      - watsonx_api_project_id is string
+      - watsonx_api_project_id | length > 0
+      - watsonx_api_url is string
+      - watsonx_api_url | length > 0
+    fail_msg: "When 'enable_watsonx' is true, 'watsonx_api_key', 'watsonx_api_project_id', and 'watsonx_api_url' must all be non-empty strings."
+
+

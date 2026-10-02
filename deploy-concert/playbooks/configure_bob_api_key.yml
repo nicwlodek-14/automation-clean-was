@@ -1,0 +1,10 @@
+---
+- name: Configure Bob Shell API key
+  hosts: concert
+  remote_user: root
+  gather_facts: false
+  tasks:
+    - name: Set Bob Shell API key
+      ansible.builtin.include_role:
+        name: ../roles/bob_shell
+        tasks_from: configure_api_key.yml

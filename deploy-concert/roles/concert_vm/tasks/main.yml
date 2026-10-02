@@ -1,0 +1,60 @@
+- name: Validate input variables
+  ansible.builtin.include_tasks: validation.yml
+
+# The Concert install sets the web server config to use the 'https://hostname:port' as the instance URL. 
+# This address isn't in DNS, instead the var concert_url will be used to overwrite the config.
+- name: Set Concert URL
+  ansible.builtin.set_fact:
+    concert_url: "https://{{ hostvars['concert']['host_fqdn'] }}:{{ concert_https_port }}"
+
+- name: Prepare Ubuntu node (Currently not supported)
+  when: ansible_facts['os_family'] == "Debian"
+  ansible.builtin.fail:
+    msg: "Ubuntu is not supported"
+
+- name: Prepare RedHat node
+  when: ansible_os_family == "RedHat"
+  ansible.builtin.include_tasks:
+    file: prepare_redhat_node.yml
+    apply:
+      become: true
+
+- name: Ensure temporary concert directory exists
+  become: true
+  ansible.builtin.file:
+    path: "{{ tmp_files_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Create ibm app install dir /opt/ibm
+  become: true
+  ansible.builtin.file:
+    path: /opt/ibm
+    state: directory
+    mode: "0755"
+
+# TODO: Work out the right way to make this concert install idempotent.
+#       For now just run the installer again. Need to test if the new 
+#       "podman-less" installer gracefully supports reruns.
+
+- name: Install and configure Concert
+  ansible.builtin.include_tasks: install.yml
+
+- name: Store concert information for subsequent roles
+  delegate_to: "{{ inventory_hostname }}"
+  delegate_facts: true
+  ansible.builtin.set_fact:
+    cacheable: true
+    concert_username: "{{ concert_default_username }}"
+    concert_password: "{{ concert_default_password }}"
+    concert_host_fqdn: "{{ hostvars['concert']['host_fqdn'] }}"
+    concert_url: "{{ concert_url }}"
+    concert_https_port: "{{ concert_https_port }}"
+
+- name: Concert info output
+  ansible.builtin.debug:
+    msg:
+      - "Username: {{ hostvars[ inventory_hostname ]['concert_username'] }}"
+      - "Password: {{ hostvars[ inventory_hostname ]['concert_password'] }}"
+      - "Host FQDN: {{ hostvars[ inventory_hostname ]['concert_host_fqdn'] }}"
+      - "URL: {{ hostvars[ inventory_hostname ]['concert_url'] }}"
