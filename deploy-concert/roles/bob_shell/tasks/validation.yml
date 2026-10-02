@@ -1,8 +1,0 @@
----
-- name: Validate bob_shell_install_script_url
-  ansible.builtin.assert:
-    that:
-      - bob_shell_install_script_url is defined
-      - bob_shell_install_script_url is string
-      - bob_shell_install_script_url | length > 0
-    fail_msg: "'bob_shell_install_script_url' must be a non-empty string."
